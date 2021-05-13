@@ -107,7 +107,7 @@ var palette = (function () {
     var makeCSVButton = loadRunGroup.add("button", undefined, undefined, { name: "makeCSVButton" });
     makeCSVButton.text = "Make CSV";
 
-    makeCSVButton.onClick = function () { makeCSV() }
+    makeCSVButton.onClick = function () { makeXLSX() }
 
     var loadCSVButton = loadRunGroup.add("button", undefined, undefined, { name: "loadCSVButton" });
     loadCSVButton.text = "Load CSV";
@@ -202,18 +202,7 @@ var palette = (function () {
         var ignoreComp = excludeCompText.text;
         var ignoreCompCheck = (excludeCompText.text == '') ? false : excludeCompsCheck.value;
 
-        // //Read CSV
-        // var csvFileRead = "";
-        // csvFile.open("r");
-        // while (!csvFile.eof) {
-        //     csvFileRead += csvFile.read();
-        // }
-        // csvFile.close();
-
-        // var csvRows = Baby.parse(csvFileRead).data;
-        // //
-
-        var foldersObj = {};
+       var foldersObj = {};
         var folderStructureArr = [];
         var csvRows;
 
@@ -223,12 +212,13 @@ var palette = (function () {
 
             var sheetName = workbook.SheetNames[i], worksheet = workbook.Sheets[sheetName];
             csvRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            duplicatedComps = [];
+            preComps = [];
+            duplicatedPreComps = [];
 
             for (var j = 1; j < csvRows[0].length; j++) {
-                duplicatedComps = [];
-                preComps = [];
-                duplicatedPreComps = [];
-
+                
                 folderName = csvRows[0][j];
                 findCompName = csvRows[0][0];
                 replaceCompName = folderName;
@@ -412,7 +402,7 @@ var palette = (function () {
         layerToShow.selected = true;
     }
 
-    function makeCSV() {
+    function makeXLSX() {
 
 
         var selection = app.project.selection;
@@ -426,7 +416,7 @@ var palette = (function () {
             }
         }
 
-        saveCSV();
+        saveXLSX();
 
         function findText(comp) {
             for (var i = 1; i <= comp.numLayers; i++) {
@@ -442,7 +432,7 @@ var palette = (function () {
             }
         }
 
-        function saveCSV() {
+        function saveXLSX() {
 
             var saveLocation = "C:/Users/grego/Downloads/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
             var sheet = "Translations"
