@@ -114,7 +114,7 @@ var palette = (function () {
 
     var csvFile
     var csvPicked = false;
-    loadCSVButton.onClick = function () { loadCSV() }
+    loadCSVButton.onClick = function () { loadFile() }
 
     var runButton = loadRunGroup.add("button", undefined, undefined, { name: "runButton" });
     runButton.text = "Run";
@@ -122,12 +122,12 @@ var palette = (function () {
         if (csvPicked) {
             run();
         } else {
-            loadCSV();
+            loadFile();
             run();
         }
     }
 
-    function loadCSV() {
+    function loadFile() {
         csvFile = File.openDialog("Choose CSV");
         csvPicked = true;
         if (csvFile == null) {
@@ -182,12 +182,6 @@ var palette = (function () {
 
         app.beginUndoGroup('Auto Translate');
 
-        var selection = app.project.selection;
-
-        var comps = []; //original comp check to see if it's already been duped
-        var duplicatedComps = [];
-        var preComps = [];
-        var duplicatedPreComps = [];
         textChanges = [];
 
         var preCompDepthLimit = (preCompDepthCheck.value) ? parseInt(preCompDepthNum.text) : -1; //-1 no limit
@@ -195,51 +189,27 @@ var palette = (function () {
 
         var folderDepthLimit = (folderDepthCheck.value) ? parseInt(folderDepthNum.text) : -1; //-1 no limit
         var folderDepth;
-        var folderName;
-        var findCompName;
-        var replaceCompName;
+
         var delimiter = (delimiterCheck.value) ? delimiterText.text : '';
+
         var ignoreComp = excludeCompText.text;
         var ignoreCompCheck = (excludeCompText.text == '') ? false : excludeCompsCheck.value;
 
-        var foldersObj = {};
-        var folderStructureArr = [];
-
-        var workbook = XLSX.readFile(csvFile, { cellDates: true });
-
-        //Combine all sheets to one
-        var wb = XLSX.utils.book_new();
-        wb.SheetNames.push("Translations");
-
-        var sheetName = workbook.SheetNames[0]
-        var worksheet = workbook.Sheets[sheetName];
-        var data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-        var ws = XLSX.utils.aoa_to_sheet(data);
-
-
-        for (var i = 1; i < workbook.SheetNames.length; i++) {
-            sheetName = workbook.SheetNames[i]
-            worksheet = workbook.Sheets[sheetName];
-            data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-            XLSX.utils.sheet_add_aoa(ws, data, { origin: -1 });
-        }
-        //---------------------------------------------------------
-        var csvRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        var csvRows = loadXLSX();
 
         for (var i = 1; i < csvRows[0].length; i++) {
+            var comps = [];
+            var duplicatedComps = [];
+            var preComps = [];
+            var duplicatedPreComps = [];
 
-            duplicatedComps = [];
-            preComps = [];
-            duplicatedPreComps = [];
+            var folderName = csvRows[0][i];
+            var findCompName = csvRows[0][0];
+            var replaceCompName = folderName;
 
-            folderName = csvRows[0][i];
-            findCompName = csvRows[0][0];
-            replaceCompName = folderName;
-
-            foldersObj = {};
+            var foldersObj = {};
             foldersObj.parentFolder = app.project.items.addFolder(folderName)
-            folderStructureArr = [];
+            var folderStructureArr = [];
 
             main();
 
@@ -254,6 +224,8 @@ var palette = (function () {
         app.endUndoGroup();
 
         function main() {
+
+            var selection = app.project.selection;
 
             for (var i = 0; i < selection.length; i++) {
                 if (selection[i] instanceof CompItem) {
@@ -350,44 +322,50 @@ var palette = (function () {
         }
 
         function findTextInProject(row) {
-
-            for (var i = 0; i < duplicatedComps.length; i++) {
-                search(duplicatedComps[i]);
-            }
             for (var i = 0; i < duplicatedPreComps.length; i++) {
-                search(duplicatedPreComps[i]);
+                search(duplicatedPreComps[i], csvRows, row);
             }
+            for (var i = 0; i < duplicatedComps.length; i++) {
+                search(duplicatedComps[i], csvRows, row);
+            }
+        }
+    }
 
-            function search(comp) {
+    function search(comp, csvRows, row) {
 
-                var layer = comp.layers;
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layers[i];
+            if (layer instanceof TextLayer) {
+                textChanges.push([comp, layer])
+                
+                for (var j = 1; j < csvRows.length; j++) {
+                    var find = csvRows[j][0];
+                    if (find == undefined) continue;
 
-                for (var i = 1; i <= comp.numLayers; i++) {
-                    if (layer[i] instanceof TextLayer) {
-                        textChanges.push([comp, layer[i]])
-                        var text = layer[i].property("Text").property("Source Text");
+                    var replace = csvRows[j][row];
+                    replace = (replace == undefined) ? "" : replace;
 
-                        for (var j = 1; j < csvRows.length; j++) {
-                            var find = csvRows[j][0];
-                            if (find == undefined) continue;
-
-                            var replace = csvRows[j][row];
-                            replace = (replace == undefined) ? "" : replace;
-
-                            var findTextCap = find.toUpperCase();
-                            var comppareTextCap = text.value.toString().toUpperCase();
-
-                            var findTextCapWhiteSpace = findTextCap.replace(/(\r\n|\n|\r|\s+|\s+$)/gm, ""); //Remove white space
-                            var comppareTextCapWhiteSpace = comppareTextCap.replace(/(\r\n|\n|\r|\s+|\s+$)/gm, "");
-
-                            if (findTextCapWhiteSpace === comppareTextCapWhiteSpace) {
-                                text.setValue(replace);
-                            }
-                        }
-                    }
+                    var textReplaced = replaceText(layer, find, replace);
+                    if(textReplaced) layer.comment = j + "," + row;
                 }
             }
         }
+    }
+
+    function replaceText(layer, find, replace) {
+        var text = layer.property("Text").property("Source Text");
+
+        var findTextCap = find.toUpperCase();
+        var comppareTextCap = text.value.toString().toUpperCase();
+
+        var findTextCapWhiteSpace = findTextCap.replace(/(\r\n|\n|\r|\s+|\s+$)/gm, ""); //Remove white space
+        var comppareTextCapWhiteSpace = comppareTextCap.replace(/(\r\n|\n|\r|\s+|\s+$)/gm, "");
+
+        if (findTextCapWhiteSpace === comppareTextCapWhiteSpace) {
+            text.setValue(replace);
+            return true;
+        }
+        return false;
     }
 
     function upDownArrows(direction) {
@@ -454,7 +432,7 @@ var palette = (function () {
             if (saveLocation == null) return;
 
             saveLocation = saveLocation.toString() + "/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
-            
+
             var sheet = "Translations"
 
             var wb = XLSX.utils.book_new();
@@ -471,6 +449,46 @@ var palette = (function () {
             XLSX.writeFile(wb, saveLocation);
 
         }
+    }
+
+    function loadXLSX() {
+        var workbook = XLSX.readFile(csvFile, { cellDates: true });
+
+        var wb = XLSX.utils.book_new();
+        wb.SheetNames.push("Translations");
+
+        var sheetName = workbook.SheetNames[0]
+        var worksheet = workbook.Sheets[sheetName];
+        var data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        var ws = XLSX.utils.aoa_to_sheet(data);
+
+
+        for (var i = 1; i < workbook.SheetNames.length; i++) {
+            sheetName = workbook.SheetNames[i]
+            worksheet = workbook.Sheets[sheetName];
+            data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            XLSX.utils.sheet_add_aoa(ws, data, { origin: -1 });
+        }
+
+        return XLSX.utils.sheet_to_json(ws, { header: 1 });
+    }
+
+    function updateLayers() {
+        var csvRows = loadXLSX();
+
+        var comps = app.project.items;
+
+        for (var i = 1; i <= comps.length; i++) {
+            if (!(comps[i] instanceof CompItem)) continue;
+            var comp = comps[i]
+            for (var j = 1; j <= comp.numLayers; j++) {
+                var layer = comp.layers[j]
+                if (!(layer instanceof TextLayer)) continue;
+                alert(layer.comment);
+            }
+        }
+
     }
 
     return palette;
