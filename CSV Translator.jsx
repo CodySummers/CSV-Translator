@@ -1,4 +1,4 @@
-//@include "./babyparse.jsxinc"
+//@include "./xlsx.extendscript.js"
 
 var panelGlobal = this;
 var palette = (function () {
@@ -114,19 +114,20 @@ var palette = (function () {
 
     var csvFile
     var csvPicked = false;
-    loadCSVButton.onClick = function () {loadCSV()}
+    loadCSVButton.onClick = function () { loadCSV() }
 
     var runButton = loadRunGroup.add("button", undefined, undefined, { name: "runButton" });
     runButton.text = "Run";
-    runButton.onClick = function () { 
-        if(csvPicked){
+    runButton.onClick = function () {
+        if (csvPicked) {
             run();
-        }else{
+        } else {
             loadCSV();
+            run();
         }
     }
 
-    function loadCSV(){
+    function loadCSV() {
         csvFile = File.openDialog("Choose CSV");
         csvPicked = true;
         if (csvFile == null) {
@@ -201,38 +202,45 @@ var palette = (function () {
         var ignoreComp = excludeCompText.text;
         var ignoreCompCheck = (excludeCompText.text == '') ? false : excludeCompsCheck.value;
 
-        //Read CSV
-        var csvFileRead = "";
-        csvFile.open("r");
-        while (!csvFile.eof) {
-            csvFileRead += csvFile.read();
-        }
-        csvFile.close();
+        // //Read CSV
+        // var csvFileRead = "";
+        // csvFile.open("r");
+        // while (!csvFile.eof) {
+        //     csvFileRead += csvFile.read();
+        // }
+        // csvFile.close();
 
-        var csvRows = Baby.parse(csvFileRead).data;
-        //
+        // var csvRows = Baby.parse(csvFileRead).data;
+        // //
 
         var foldersObj = {};
         var folderStructureArr = [];
+        var csvRows;
 
-        //findTextInProject(find, replace);
+        var workbook = XLSX.readFile(csvFile, { cellDates: true });
 
-        for (var i = 1; i < csvRows[0].length; i++) {
-            duplicatedComps = [];
-            preComps = [];
-            duplicatedPreComps = [];
+        for (var i = 0; i < workbook.SheetNames.length; i++) {
 
-            folderName = csvRows[0][i];
-            findCompName = csvRows[0][0];
-            replaceCompName = folderName;
+            var sheetName = workbook.SheetNames[i], worksheet = workbook.Sheets[sheetName];
+            csvRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-            foldersObj = {};
-            foldersObj.parentFolder = app.project.items.addFolder(folderName)
-            folderStructureArr = [];
+            for (var j = 1; j < csvRows[0].length; j++) {
+                duplicatedComps = [];
+                preComps = [];
+                duplicatedPreComps = [];
 
-            main();
+                folderName = csvRows[0][j];
+                findCompName = csvRows[0][0];
+                replaceCompName = folderName;
 
-            findTextInProject(i);
+                foldersObj = {};
+                foldersObj.parentFolder = app.project.items.addFolder(folderName)
+                folderStructureArr = [];
+
+                main();
+
+                findTextInProject(j);
+            }
         }
 
         //Text Layer Arrow Selector Setup
@@ -358,8 +366,11 @@ var palette = (function () {
 
                         for (var j = 1; j < csvRows.length; j++) {
                             var find = csvRows[j][0];
+                            if (find == undefined) continue;
+
                             var replace = csvRows[j][row];
                             replace = (replace == undefined) ? "" : replace;
+
                             var findTextCap = find.toUpperCase();
                             var comppareTextCap = text.value.toString().toUpperCase();
 
@@ -406,7 +417,7 @@ var palette = (function () {
 
         var selection = app.project.selection;
 
-        var headertext = '"EN"'
+        var headertext = 'EN'
         var addText = [headertext];
 
         for (var i = 0; i < selection.length; i++) {
@@ -422,7 +433,7 @@ var palette = (function () {
                 var layer = comp.layers[i];
                 if (layer.source instanceof CompItem) findText(layer.source);
                 if (layer instanceof TextLayer) {
-                    var text = '"' + layer.property("Text")("Source Text").value.toString() + '"';
+                    var text = layer.property("Text")("Source Text").value.toString();
                     if (addText.indexOf(text) == -1) {
                         addText.push(text);
                     }
@@ -432,15 +443,25 @@ var palette = (function () {
         }
 
         function saveCSV() {
-            var csvFile = File("C:/Users/grego/Downloads/" + app.project.file.name.split(".")[0] + " Translations.csv");
 
-            csvFile.open("w");
-            csvFile.write(addText.join("\n"));
+            var saveLocation = "C:/Users/grego/Downloads/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
+            var sheet = "Translations"
 
-            csvFile.close();
+            var wb = XLSX.utils.book_new();
+                wb.SheetNames.push(sheet);
+
+            var ws = XLSX.utils.aoa_to_sheet([[addText[0]]]);
+
+            for (var i = 1; i < addText.length; i++) {
+                XLSX.utils.sheet_add_aoa(ws, [[addText[i]]], { origin: -1 });
+            }
+
+            wb.Sheets[sheet] = ws;
+
+            XLSX.writeFile(wb, saveLocation);
+
         }
     }
-
 
     return palette;
 
