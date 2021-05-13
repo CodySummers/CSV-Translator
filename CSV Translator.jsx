@@ -202,35 +202,48 @@ var palette = (function () {
         var ignoreComp = excludeCompText.text;
         var ignoreCompCheck = (excludeCompText.text == '') ? false : excludeCompsCheck.value;
 
-       var foldersObj = {};
+        var foldersObj = {};
         var folderStructureArr = [];
-        var csvRows;
 
         var workbook = XLSX.readFile(csvFile, { cellDates: true });
 
-        for (var i = 0; i < workbook.SheetNames.length; i++) {
+        //Combine all sheets to one
+        var wb = XLSX.utils.book_new();
+        wb.SheetNames.push("Translations");
 
-            var sheetName = workbook.SheetNames[i], worksheet = workbook.Sheets[sheetName];
-            csvRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-            
+        var sheetName = workbook.SheetNames[0]
+        var worksheet = workbook.Sheets[sheetName];
+        var data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        var ws = XLSX.utils.aoa_to_sheet(data);
+
+
+        for (var i = 1; i < workbook.SheetNames.length; i++) {
+            sheetName = workbook.SheetNames[i]
+            worksheet = workbook.Sheets[sheetName];
+            data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            XLSX.utils.sheet_add_aoa(ws, data, { origin: -1 });
+        }
+        //---------------------------------------------------------
+        var csvRows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        for (var i = 1; i < csvRows[0].length; i++) {
+
             duplicatedComps = [];
             preComps = [];
             duplicatedPreComps = [];
 
-            for (var j = 1; j < csvRows[0].length; j++) {
-                
-                folderName = csvRows[0][j];
-                findCompName = csvRows[0][0];
-                replaceCompName = folderName;
+            folderName = csvRows[0][i];
+            findCompName = csvRows[0][0];
+            replaceCompName = folderName;
 
-                foldersObj = {};
-                foldersObj.parentFolder = app.project.items.addFolder(folderName)
-                folderStructureArr = [];
+            foldersObj = {};
+            foldersObj.parentFolder = app.project.items.addFolder(folderName)
+            folderStructureArr = [];
 
-                main();
+            main();
 
-                findTextInProject(j);
-            }
+            findTextInProject(i);
         }
 
         //Text Layer Arrow Selector Setup
@@ -404,10 +417,12 @@ var palette = (function () {
 
     function makeXLSX() {
 
-
         var selection = app.project.selection;
 
-        var headertext = 'EN'
+        var compName = app.project.selection[0].name
+        var headertext = compName.split(delimiterText.text)[compName.split(delimiterText.text).length - 1];
+        headertext = (headertext == undefined) ? "" : headertext;
+
         var addText = [headertext];
 
         for (var i = 0; i < selection.length; i++) {
@@ -434,11 +449,16 @@ var palette = (function () {
 
         function saveXLSX() {
 
-            var saveLocation = "C:/Users/grego/Downloads/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
+            folder = new Folder();
+            var saveLocation = folder.selectDlg("Choose Save Location");
+            if (saveLocation == null) return;
+
+            saveLocation = saveLocation.toString() + "/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
+            
             var sheet = "Translations"
 
             var wb = XLSX.utils.book_new();
-                wb.SheetNames.push(sheet);
+            wb.SheetNames.push(sheet);
 
             var ws = XLSX.utils.aoa_to_sheet([[addText[0]]]);
 
