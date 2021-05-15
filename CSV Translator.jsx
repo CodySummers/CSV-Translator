@@ -116,14 +116,27 @@ var palette = (function () {
     var csvPicked = false;
     loadCSVButton.onClick = function () { loadFile() }
 
-    var runButton = loadRunGroup.add("button", undefined, undefined, { name: "runButton" });
+    var refreshButton = loadRunGroup.add("button", undefined, undefined, { name: "refreshButton" });
+    refreshButton.text = "Refresh";
+    refreshButton.helpTip = "Assumes cells have not moved since initial run"
+    refreshButton.onClick = function () {
+        if (csvPicked) {
+            refreshLayers();
+        } else {
+            loadFile();
+            if (csvPicked) refreshLayers();
+        }
+    }
+
+
+    var runButton = palette.add("button", undefined, undefined, { name: "runButton" });
     runButton.text = "Run";
     runButton.onClick = function () {
         if (csvPicked) {
             run();
         } else {
             loadFile();
-            run();
+            if (csvPicked) run();
         }
     }
 
@@ -134,6 +147,8 @@ var palette = (function () {
             csvPicked = false;
         };
     }
+
+
 
     var textChangeGroup = palette.add("group", undefined, { name: "textChangeGroup" });
     textChangeGroup.orientation = "row";
@@ -216,10 +231,7 @@ var palette = (function () {
             findTextInProject(i);
         }
 
-        //Text Layer Arrow Selector Setup
-        changesMadeStatic.text = "0/" + textChanges.length;
-        textCounter = textChanges.length * textChanges.length - 1; //Quick fix to make arrows go up and down
-        textLoop = Math.abs(layerCounter % changes.length);
+        changedText();
 
         app.endUndoGroup();
 
@@ -337,7 +349,7 @@ var palette = (function () {
             var layer = comp.layers[i];
             if (layer instanceof TextLayer) {
                 textChanges.push([comp, layer])
-                
+
                 for (var j = 1; j < csvRows.length; j++) {
                     var find = csvRows[j][0];
                     if (find == undefined) continue;
@@ -346,7 +358,7 @@ var palette = (function () {
                     replace = (replace == undefined) ? "" : replace;
 
                     var textReplaced = replaceText(layer, find, replace);
-                    if(textReplaced) layer.comment = j + "," + row;
+                    if (textReplaced) layer.comment = "CSV Translator: " + j + "," + row;
                 }
             }
         }
@@ -427,11 +439,10 @@ var palette = (function () {
 
         function saveXLSX() {
 
-            folder = new Folder();
-            var saveLocation = folder.selectDlg("Choose Save Location");
+            var projectName = app.project.file.name.split(".aep")[0] + " Translations"
+            var saveLocation = new File(projectName);
+            saveLocation = saveLocation.saveDlg("Choose Save Location", ".xlsx");
             if (saveLocation == null) return;
-
-            saveLocation = saveLocation.toString() + "/" + app.project.file.name.split(".")[0] + " Translations.xlsx";
 
             var sheet = "Translations"
 
@@ -446,8 +457,7 @@ var palette = (function () {
 
             wb.Sheets[sheet] = ws;
 
-            XLSX.writeFile(wb, saveLocation);
-
+            XLSX.writeFile(wb, saveLocation.toString());
         }
     }
 
@@ -474,21 +484,63 @@ var palette = (function () {
         return XLSX.utils.sheet_to_json(ws, { header: 1 });
     }
 
-    function updateLayers() {
+    function changedText() {
+        //Text Layer Arrow Selector Setup
+        changesMadeStatic.text = "0/" + textChanges.length;
+        textCounter = textChanges.length * textChanges.length - 1; //Quick fix to make arrows go up and down
+    }
+
+    function refreshLayers() {
+
+        app.beginUndoGroup("Refresh text layers")
+
         var csvRows = loadXLSX();
 
-        var comps = app.project.items;
+        var selection = app.project.selection;
+        var comps = [];
 
-        for (var i = 1; i <= comps.length; i++) {
-            if (!(comps[i] instanceof CompItem)) continue;
-            var comp = comps[i]
-            for (var j = 1; j <= comp.numLayers; j++) {
-                var layer = comp.layers[j]
-                if (!(layer instanceof TextLayer)) continue;
-                alert(layer.comment);
+        if (selection.length == 0) {
+            for (var i = 1; i <= app.project.numItems; i++) {
+                var item = app.project.items[i];
+                comps.push(item)
+            }
+        } else comps = selection;
+
+        var checkedComps = [];
+        var layerComments = [];
+        textChanges = [];
+
+        for (var i = 0; i < comps.length; i++) {
+            if (comps[i] instanceof CompItem) findComments(comps[i]);
+        }
+
+        function findComments(comp) {
+            checkedComps.push(comp);
+            for (var i = 1; i <= comp.numLayers; i++) {
+                var layer = comp.layers[i];
+                if (layer.source instanceof CompItem && checkedComps.indexOf(layer.source) == -1) findComments(layer.source);
+                if (layer instanceof TextLayer) {
+                    if (layer.comment.indexOf("CSV Translator:") == -1) continue;
+                    layerComments.push(layer);
+                }
             }
         }
 
+        for (var i = 0; i < layerComments.length; i++) {
+            var layer = layerComments[i]
+            var text = layer.property("Text").property("Source Text");
+            var layerComment = layer.comment.split("CSV Translator: ")[1];
+            var column = parseInt(layerComment.split(",")[0]);
+            var row = parseInt(layerComment.split(",")[1]);
+            if (text.value != csvRows[column][row]) {
+                text.setValue(csvRows[column][row]);
+                textChanges.push([layer.containingComp, layer])
+            }
+        }
+
+        changedText();
+
+        app.endUndoGroup();
     }
 
     return palette;
